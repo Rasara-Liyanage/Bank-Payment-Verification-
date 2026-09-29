@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload payment slip | BuildStart</title>
+
+  <style>
+    body {
+      margin: 0;
+      background: #f4f6fa;
+      color: #172033;
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+    }
+
+    main {
+      max-width: 760px;
+      margin: auto;
+      padding: 28px 20px;
+    }
+
+    a { color: #2454df; }
+
+    .card {
+      background: white;
+      border: 1px solid #e1e5ed;
+      border-radius: 12px;
+      padding: 24px;
+      margin-top: 20px;
+    }
+
+    .notice {
+      background: #fff8e6;
+      color: #805000;
+      border: 1px solid #efcd75;
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    label {
+      display: block;
+      font-weight: bold;
+      margin: 22px 0 8px;
+    }
+
+    select, input {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #cbd2df;
+      border-radius: 8px;
+      background: white;
+      font: inherit;
+    }
+
+    button {
+      margin-top: 24px;
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      background: #2454df;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: wait;
+    }
+
+    #upload-status {
+      overflow-wrap: anywhere;
+    }
+
+    .error { color: #b42318; }
+  </style>
+</head>
+
+<body>
+<main>
+  <a href="/dashboard">← Back to dashboard</a>
+
+  <h1>Upload payment slip</h1>
+
+  <p class="notice">
+    DEMO WORKSPACE — use test slips.
+    Uploading a slip does not approve a payment.
+  </p>
+
+  <section class="card">
+    {% if orders %}
+      <form id="upload-form">
+        <label for="order-id">Order</label>
+
+        <select id="order-id" required>
+          <option value="">Select an order</option>
+
+          {% for order in orders %}
+            <option value="{{ order.id }}">
+              {{ order.id }} — {{ order.customer_name }}
+              — {{ order.amount_display }}
+            </option>
+          {% endfor %}
+        </select>
+
+        <label for="slip-file">Payment slip image</label>
+
+        <input
+          id="slip-file"
+          name="file"
+          type="file"
+          accept="image/png,image/jpeg"
+          aria-describedby="file-help"
+          required
+        >
+
+        <p id="file-help">
+          PNG or JPEG. Maximum file size: 5 MiB.
+        </p>
+
+        <button id="upload-button" type="submit">
+          Upload slip
+        </button>
+
+        <p id="upload-status" role="status" aria-live="polite"></p>
+      </form>
+    {% else %}
+      <p>No orders are available. Create demo orders first.</p>
+    {% endif %}
+  </section>
+</main>
+
+<script>
+  const form = document.getElementById("upload-form");
+
+  if (form) {
+    const orderInput = document.getElementById("order-id");
+    const fileInput = document.getElementById("slip-file");
+    const button = document.getElementById("upload-button");
+    const status = document.getElementById("upload-status");
+
+    let uploading = false;
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      if (uploading) return;
+      if (!form.reportValidity()) return;
+
+      const file = fileInput.files[0];
+      const orderId = orderInput.value;
+
+      status.className = "";
+
+      if (!file || file.size === 0) {
+        status.textContent = "Please select a non-empty image.";
+        status.className = "error";
+        return;
+      }
+
+      if (file.size > 5 * 1024 * 1024) {
+        status.textContent = "The image must be 5 MiB or smaller.";
+        status.className = "error";
+        return;
+      }
+
+      const body = new FormData();
+      body.append("file", file);
+
+      uploading = true;
+      button.disabled = true;
+      status.textContent = "Uploading slip…";
+
+      try {
+        const response = await fetch(
+          `/orders/${encodeURIComponent(orderId)}/submissions`,
+          {
+            method: "POST",
+            body: body
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          const message = typeof result.detail === "string"
+            ? result.detail
+            : "Upload failed. Please check the selected order and image.";
+
+          throw new Error(message);
+        }
+
+        if (typeof result.submission_id !== "string") {
+          throw new Error(
+            "The server response is incomplete. Check the dashboard before uploading again."
+          );
+        }
+
+        status.textContent = "Upload complete. Opening submission…";
+
+        window.location.assign(
+          `/dashboard/submissions/${encodeURIComponent(result.submission_id)}`
+        );
+      } catch (error) {
+        status.className = "error";
+
+        status.textContent = error instanceof TypeError
+          ? "Connection interrupted. Check the dashboard before retrying; the upload may have completed."
+          : error.message;
+      } finally {
+        uploading = false;
+        button.disabled = false;
+      }
+    });
+  }
+</script>
+</body>
+</html>
